@@ -63,15 +63,17 @@ else:
 
 # 可以增加程序的运行效率，可以让内置的cuDNN的 auto-tuner 自动寻找最适合当前配置的高效算法
 torch.backends.cudnn.deterministic = True
+# 提升卷积神经网络的运行速度，为整个网络的每个卷积层搜索最适合它的卷积实现算法
 torch.backends.cudnn.benchmark = False
-
+# 模型保存路径
 save_dir = './save_model/' + TIMESTAMP
-
+# 训练集
 trainFolder = MovingMNIST(is_train=True,
                           root='data/',
                           n_frames_input=args.frames_input,
                           n_frames_output=args.frames_output,
                           num_objects=[3])
+# 验证集
 validFolder = MovingMNIST(is_train=False,
                           root='data/',
                           n_frames_input=args.frames_input,
@@ -84,6 +86,7 @@ validLoader = torch.utils.data.DataLoader(validFolder,
                                           batch_size=args.batch_size,
                                           shuffle=False)
 
+# 判断使用convLSTM还是convGRU，默认使用convGRU
 if args.convlstm:
     encoder_params = convlstm_encoder_params
     decoder_params = convlstm_decoder_params
@@ -99,23 +102,32 @@ def train():
     '''
     main function to run the training
     '''
+    # 实例化Encoder和Decoder
     encoder = Encoder(encoder_params[0], encoder_params[1]).cuda()
     decoder = Decoder(decoder_params[0], decoder_params[1]).cuda()
+    
+    # 实例化ED
     net = ED(encoder, decoder)
+    # 运行目录
     run_dir = './runs/' + TIMESTAMP
+    # 如果 run_dir 不存在则创建目录
     if not os.path.isdir(run_dir):
         os.makedirs(run_dir)
     tb = SummaryWriter(run_dir)
     # initialize the early_stopping object
     early_stopping = EarlyStopping(patience=20, verbose=True)
+
+    # 判断CUDA是否可用
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+    # 如果GPU大于一块，使用并行计算
     if torch.cuda.device_count() > 1:
         net = nn.DataParallel(net)
     net.to(device)
 
+    # 判断checkpoint.pth.tar文件是否存在
     if os.path.exists(os.path.join(save_dir, 'checkpoint.pth.tar')):
-        # load existing model
+        # 加载保存的模型
         print('==> loading existing model')
         model_info = torch.load(os.path.join(save_dir, 'checkpoin.pth.tar'))
         net.load_state_dict(model_info['state_dict'])
@@ -123,11 +135,16 @@ def train():
         optimizer.load_state_dict(model_info['optimizer'])
         cur_epoch = model_info['epoch'] + 1
     else:
+        # 如果checkpoint.pth.tar不存在则判断save_dir是否存在，不存在则创建
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
+        # 将当前epoch初始化为0
         cur_epoch = 0
+    # 损失函数使用MSELoss
     lossfunction = nn.MSELoss().cuda()
+    # 优化器使用Adam
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
+    
     pla_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer,
                                                       factor=0.5,
                                                       patience=4,
