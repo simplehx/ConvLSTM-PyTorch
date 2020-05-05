@@ -60,6 +60,8 @@ if torch.cuda.device_count() > 1:
     torch.cuda.manual_seed_all(random_seed)
 else:
     torch.cuda.manual_seed(random_seed)
+
+# 可以增加程序的运行效率，可以让内置的cuDNN的 auto-tuner 自动寻找最适合当前配置的高效算法
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
